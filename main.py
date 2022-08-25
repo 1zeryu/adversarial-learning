@@ -76,8 +76,7 @@ elif args.model == 'resnet34':
     model = ResNet34(num_classes)
 print("building model...")
 
-filename = "model" + args.model + "_epochs" + str(args.num_epochs) + '_args.criterion' \
-                +args.criterion + "_parseval" + str(args.parseval)
+filename = "model" + args.model + "_mode" + args.mode
 
 
 if args.attack is None:
@@ -95,11 +94,11 @@ def info(self, args):
     self.logger.info("| running the code...")
     self.logger.info("running time: {}".format(timer.logtime()))
     self.logger.info('''Hyperparamter:
-            model: {},
+            model: {}, mode: {}
             initilaze_learning_rate: {},  dataset: {}, lr_scheduler: {} \n
             parseval: {},  num_epochs: {},  wide_factor: {}, \n
             debug: {},  dropout: {},   criterion: {}, batch_size: {}
-    '''.format(args.model, args.lr, args.dataset, args.lr_scheduler, args.parseval, args.num_epochs, args.widen_factor,
+    '''.format(args.model, args.mode,args.lr, args.dataset, args.lr_scheduler, args.parseval, args.num_epochs, args.widen_factor,
     args.debug, args.dropout, args.criterion,args.batch_size))
 # information log in
 logger.info(args)
@@ -169,7 +168,10 @@ def attack_train(epoch):
         if use_cuda:
             inputs, targets = inputs.cuda(), targets.cuda()
         optimizer.zero_grad()
-        outputs = model(atk(inputs, targets))
+        adv_imgs = atk(inputs, targets)
+        outputs = model(adv_imgs)
+        writer.images(adv_imgs[:16], epoch, 'images/adversarial')
+        writer.images(inputs[:16], epoch, 'images/original')
         loss = criterion(outputs, targets)
         loss.backward()
         optimizer.step()
@@ -239,7 +241,9 @@ def attack_test(epoch, best_acc):
         for batch_idx, (inputs, targets) in enumerate(testloader):
             if use_cuda:
                 inputs, targets = inputs.cuda(), targets.cuda()
-            inputs, targets = Variable(inputs), Variable(targets)
+            adv_imgs = atk(inputs, targets)
+            writer.images(adv_imgs[:16], epoch, 'images/adversarial')
+            writer.images(inputs[:16], epoch, 'images/original')
             outputs = model(inputs)
             loss = criterion(outputs, targets)
 
@@ -289,7 +293,8 @@ if __name__ == "__main__":
         writer.test_acc(test_acc, epoch)
         writer.train_acc(train_acc, epoch)
         writer.train_loss(train_loss, epoch)
-        writer.test_loss(test_loss, epoch)
+        writer.test_loss(test_loss, epoch)       
         epoch_time = time.time() - start_time
         elapsed_time += epoch_time
         logger.info('| Elapsed time : %d:%02d:%02d'  %(cf.get_hms(elapsed_time)))
+        writer.close()

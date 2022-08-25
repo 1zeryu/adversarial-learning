@@ -39,7 +39,12 @@ class writer(object):
     
     def test_loss(self, loss, epoch):
         self.writer.add_scalar('loss/test')
-
+    
+    def images(self, batch_images, epoch, name='my_image_batch'):
+        self.writer.add_images(name, batch_images.numpy(), epoch)
+        
+    def close(self):
+        self.writer.close()
 
 class timer(object):
     def logtime(self):
