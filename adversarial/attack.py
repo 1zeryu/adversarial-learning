@@ -1,25 +1,39 @@
-import torchattacks
-from torchvision.models import resnet18
-from torchvision import datasets, transforms
-from torch.utils.data import DataLoader
-from visdom import Visdom
+import torchattacks as tk
 
-def PGD(images, labels, model, eps=0.3, alpha=2/255, steps=40):
-    atk = torchattacks.PGD(model, eps=eps, alpha=alpha, steps=steps)
-    return atk(images, labels)
-
-
-# atk.set_mode_targeted_least_likely(kth_min)  # Targeted attack
-# atk.set_return_type(type='int')  # Return values [0, 255]
-# atk = torchattacks.MultiAttack([atk1, ..., atk99])  # Combine attacks
-# atk.save(data_loader, save_path=None, verbose=True, return_verbose=False)  # Save adversarial images
-
-if __name__ == "__main__":
-    print("running...")
-    transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.5,0.5,0.5],std=[0.5,0.5,0.5])
-    ])
-    trainset = datasets.MNIST(root='../Dataset/',download=True ,train=True, transform=transform)
+class Attacks(object):
+    def __init__(self, model, attack, eps):
+#         atks = [
+#     FGSM(model, eps=8/255),
+#     BIM(model, eps=8/255, alpha=2/255, steps=100),
+#     RFGSM(model, eps=8/255, alpha=2/255, steps=100),
+#     CW(model, c=1, lr=0.01, steps=100, kappa=0),
+#     PGD(model, eps=8/255, alpha=2/225, steps=100, random_start=True),
+#     PGDL2(model, eps=1, alpha=0.2, steps=100),
+#     EOTPGD(model, eps=8/255, alpha=2/255, steps=100, eot_iter=2),
+#     FFGSM(model, eps=8/255, alpha=10/255),
+#     TPGD(model, eps=8/255, alpha=2/255, steps=100),
+#     MIFGSM(model, eps=8/255, alpha=2/255, steps=100, decay=0.1),
+#     VANILA(model),
+#     GN(model, std=0.1),
+#     APGD(model, eps=8/255, steps=100, eot_iter=1, n_restarts=1, loss='ce'),
+#     APGD(model, eps=8/255, steps=100, eot_iter=1, n_restarts=1, loss='dlr'),
+#     APGDT(model, eps=8/255, steps=100, eot_iter=1, n_restarts=1),
+#     FAB(model, eps=8/255, steps=100, n_classes=10, n_restarts=1, targeted=False),
+#     FAB(model, eps=8/255, steps=100, n_classes=10, n_restarts=1, targeted=True),
+#     Square(model, eps=8/255, n_queries=5000, n_restarts=1, loss='ce'),
+#     AutoAttack(model, eps=8/255, n_classes=10, version='standard'),
+#     OnePixel(model, pixels=5, inf_batch=50),
+#     DeepFool(model, steps=100),
+#     DIFGSM(model, eps=8/255, alpha=2/255, steps=100, diversity_prob=0.5, resize_rate=0.9)
+# ]
+        attack = attack.lower()
+        if attack == 'pgd':
+            self.atk = tk.PGD(model, eps=eps)
+        elif attack == 'fgsm':
+            self.atk = tk.FGSM(model, eps=eps)
+        elif attack == 'cw':
+            self.atk = tk.CW(model, eps=eps)
+            
     
-    
+    def __call__(self, images, labels):
+        return self.atk(images, labels) 

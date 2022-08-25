@@ -17,6 +17,7 @@ from networks import *
 from torch.autograd import Variable
 from torch.optim import lr_scheduler
 use_cuda = torch.cuda.is_available()
+from adversarial.attack import Attacks 
 
 import os
 os.environ["MKL_NUM_THREADS"] = '4'
@@ -38,6 +39,10 @@ parser.add_argument('--debug','-d',action='store_true',default=False)
 parser.add_argument('--criterion', default='sgd', type=str)
 parser.add_argument('--lr_scheduler',default=None,type=str)
 parser.add_argument('--weight_decay',default=5e-4,type=float)
+parser.add_argument('--attack', default=None, type=str)
+parser.add_argument('--eps', default=2/255, type=float)
+parser.add_argument('--mode',default=0, type=int) # mode: if is 0, then trian_epoch, if 1, then attack_train, if 2, then attack_test
+parser.add_argument('--save', '-s', action='store_true', default=False)
 args = parser.parse_args()
 
 # parsering
@@ -74,6 +79,11 @@ print("building model...")
 filename = "model" + args.model + "_epochs" + str(args.num_epochs) + '_args.criterion' \
                 +args.criterion + "_parseval" + str(args.parseval)
 
+
+if args.attack is None:
+    pass
+else:
+    atk = Attacks(model, args.attack, eps=args.eps)
 
 print("loading tools...")
 timer = timer()
@@ -124,7 +134,6 @@ def train_epoch(epoch):
         if use_cuda:
             inputs, targets = inputs.cuda(), targets.cuda() # GPU settings
         optimizer.zero_grad()
-        inputs, targets = Variable(inputs), Variable(targets)
         outputs = model(inputs)               # Forward Propagation
         loss = criterion(outputs, targets)  # Loss
         loss.backward()  # Backward Propagation
@@ -146,10 +155,48 @@ def train_epoch(epoch):
         sys.stdout.flush()
     logger.info('| Epoch %3d, Data: %3d \t\tLoss: %.4f Acc@1: %.3f%%'
                 %(epoch, batch_idx,loss.item(), 100.*correct/total))
-    return acc
+    return acc, train_loss
 
     # Training
-best_acc = 0
+def attack_train(epoch):
+    model.train()
+    model.training = True
+    train_loss = 0
+    correct = 0
+    total = 0
+    
+    for batch_idx, (inputs, targets) in enumerate(trainloader):
+        if use_cuda:
+            inputs, targets = inputs.cuda(), targets.cuda()
+        optimizer.zero_grad()
+        outputs = model(atk(inputs, targets))
+        loss = criterion(outputs, targets)
+        loss.backward()
+        optimizer.step()
+        
+        if args.parseval:
+            for m in model.modules():
+                orthogonal_retraction(m)
+                convex_constraint(m)
+        train_loss += loss.item()
+        _, predicted = torch.max(outputs.data, 1)
+        total += targets.size(0)
+        correct += predicted.eq(targets.data).cpu().sum()
+        acc = 100.*correct/total
+        sys.stdout.write('\r')
+        sys.stdout.write('| Epoch %3d, Data: %3d \t\tLoss: %.4f Acc@1: %.3f%%'
+                %(epoch, batch_idx,loss.item(), 100.*correct/total))
+        sys.stdout.flush()
+    logger.info('| Epoch %3d, Data: %3d \t\tLoss: %.4f Acc@1: %.3f%%'
+                %(epoch, batch_idx,loss.item(), 100.*correct/total))
+    return acc, train_loss
+        
+def save(state):
+    if not os.path.isdir('checkpoints'):
+        os.mkdir('checkpoints')
+    save_point = './checkpoints/'
+    torch.save(state, save_point+filename+'.pt')
+
 def test(epoch, best_acc):
     model.eval()
     test_loss = 0
@@ -172,7 +219,7 @@ def test(epoch, best_acc):
         acc = 100.*correct/total
         print("\n| Validation Epoch #%d\t\t\tLoss: %.4f test_Acc@1: %.2f%%" %(epoch, loss.item(), acc))
         logger.info("\n| Validation Epoch #%d\t\t\tLoss: %.4f test_Acc@1: %.2f%%" %(epoch, loss.item(), acc))
-        if acc > best_acc:
+        if acc > best_acc and args.save:
             logger.info('| Saving Best model...\t\t\tTop1 = %.2f%%' %(acc))
             state = {
                     'net':model.module if use_cuda else model,
@@ -181,13 +228,42 @@ def test(epoch, best_acc):
             }
             save(state)
             best_acc = acc
-    return acc
+    return acc, test_loss
 
-def save(state):
-    if not os.path.isdir('checkpoints'):
-        os.mkdir('checkpoints')
-    save_point = './checkpoints/'
-    torch.save(state, save_point+filename+'.pt')
+def attack_test(epoch, best_acc):
+    model.eval()
+    test_loss = 0
+    correct = 0
+    total = 0
+    with torch.no_grad():
+        for batch_idx, (inputs, targets) in enumerate(testloader):
+            if use_cuda:
+                inputs, targets = inputs.cuda(), targets.cuda()
+            inputs, targets = Variable(inputs), Variable(targets)
+            outputs = model(inputs)
+            loss = criterion(outputs, targets)
+
+            test_loss += loss.item()
+            _, predicted = torch.max(outputs.data, 1)
+            total += targets.size(0)
+            correct += predicted.eq(targets.data).cpu().sum()
+
+        # Save checkpoint when best model
+        acc = 100.*correct/total
+        print("\n| Validation Epoch #%d\t\t\tLoss: %.4f test_Acc@1: %.2f%%" %(epoch, loss.item(), acc))
+        logger.info("\n| Validation Epoch #%d\t\t\tLoss: %.4f test_Acc@1: %.2f%%" %(epoch, loss.item(), acc))
+        if acc > best_acc and args.save:
+            logger.info('| Saving Best model...\t\t\tTop1 = %.2f%%' %(acc))
+            state = {
+                    'net':model.module if use_cuda else model,
+                    'acc':acc,
+                    'epoch':epoch,
+            }
+            save(state)
+            best_acc = acc
+    return acc, test_loss
+
+
 
 if __name__ == "__main__":
     if use_cuda:
@@ -197,13 +273,23 @@ if __name__ == "__main__":
     elapsed_time = 0
     for epoch in range(1, args.num_epochs+1):
         start_time = time.time()
+        if args.mode == 0:
+            best_acc = 0
+            train_acc, train_loss = train_epoch(epoch)
+            test_acc, test_loss = test(epoch, best_acc)
+        elif args.mode == 1:
+            train_acc, train_loss = attack_train(epoch)
+            test_acc, test_loss = test(epoch, best_acc)
+        elif args.mode == 2:
+            train_acc, train_loss = train_epoch(epoch)
+            test_acc, test_loss = attack_test(test)
 
-        train_acc = train_epoch(epoch)
-        test_acc = test(epoch, best_acc)
         if args.lr_scheduler:
             scheduler.step()
         writer.test_acc(test_acc, epoch)
         writer.train_acc(train_acc, epoch)
+        writer.train_loss(train_loss, epoch)
+        writer.test_loss(test_loss, epoch)
         epoch_time = time.time() - start_time
         elapsed_time += epoch_time
         logger.info('| Elapsed time : %d:%02d:%02d'  %(cf.get_hms(elapsed_time)))
