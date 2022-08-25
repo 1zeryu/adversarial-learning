@@ -68,3 +68,5 @@ class timer(object):
         return '| Running time : %d:%02d:%02d'  %(self.get_hms(self.running_time))
 
 
+def visual(object):
+    pass

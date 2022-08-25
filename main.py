@@ -8,7 +8,7 @@ import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
 import config as cf
 from tools import *
-from Dataset.dataset import getCIFAR
+from Dataset.dataset import CIFAR
 import os
 import sys
 from networks.ResNet import *
@@ -51,11 +51,11 @@ args = parser.parse_args()
 def dataset(args):
     dataset = args.dataset
     if dataset == 'cifar10':
-        data = getCIFAR(dataset)
+        data = CIFAR(dataset)
         train_dataloader, test_dataloader, num_classes = data.dataloader(args.batch_size)
         
     if dataset == 'cifar100':
-        data = getCIFAR(dataset)
+        data = CIFAR(dataset)
         train_dataloader, test_dataloader, num_classes = data.dataloader(args.batch_size)
     print("loading data...")
     return train_dataloader, test_dataloader, num_classes
