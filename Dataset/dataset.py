@@ -44,7 +44,7 @@ class CIFAR():
     def length(self):
         return len(self.trainset), len(self.testset)
 
-    def dataloader(self, batch_size):
+    def dataloader(self, batch_size, num_workers):
         if(self.dataset == 'cifar10'):
             trainset = torchvision.datasets.CIFAR10(root=dataset_dir[self.dataset], train=True, download=True, transform=self.transform_train)
             testset = torchvision.datasets.CIFAR10(root=dataset_dir[self.dataset], train=False, download=False, transform=self.transform_test)
@@ -57,8 +57,10 @@ class CIFAR():
         self.trainlength = len(trainset)
         self.testlength = len(testset)
 
-        trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size, shuffle=True, num_workers=4)
-        testloader = torch.utils.data.DataLoader(testset, batch_size=100, shuffle=False, num_workers=4)
+        trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size,
+                                                  shuffle=True, num_workers=num_workers)
+        testloader = torch.utils.data.DataLoader(testset, batch_size=100, 
+                                                 shuffle=False, num_workers=num_workers)
         return trainloader, testloader, num_classes
 
 class Mnist(object):
@@ -75,10 +77,12 @@ class Mnist(object):
         self.testlength = len(testset)
         return trainset, testset
     
-    def dataloader(self, batch_size):
+    def dataloader(self, batch_size, num_workers):
         trainset,testset = self.dataset()
-        trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size, shuffle=True, num_worker=4)
-        testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size, shuffle=True, num_worker=4)
+        trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size,
+                                                  shuffle=True, num_workers=num_workers)
+        testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size, shuffle=True,
+                                                 num_workers=num_workers)
         return trainloader, testloader
 
 

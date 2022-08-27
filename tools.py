@@ -8,7 +8,7 @@ class log(object) :
     def __init__(self, filename) :
         if not os.path.isdir('logs') :
             os.mkdir('logs')
-        loggerfile = './logs/' + filename + '.log'
+        loggerfile = './logs/' + time.strftime("%y%m%d%H%M%S", time.localtime()) + filename + '.log'
         self.logger = logging.getLogger()
         self.logger.setLevel(logging.INFO)
         fh = logging.FileHandler(loggerfile)
@@ -20,12 +20,14 @@ class log(object) :
     def info(self, information):
         self.logger.info(information)
 
+    def close(self):
+        self.logger.close()
 
 class writer(object):
     def __init__(self, filename):
         if not os.path.isdir('runs') :
             os.mkdir('runs')
-        log_dir = './runs/' + time.strftime("%y%m%d-%H:%M:%S", time.localtime()) + filename
+        log_dir = './runs/' + time.strftime("%y%m%d%H%M%S", time.localtime()) + filename
         self.writer = SummaryWriter(log_dir=log_dir)
     
     def test_acc(self, acc, epoch):
@@ -38,10 +40,10 @@ class writer(object):
         self.writer.add_scalar('loss/train', loss, epoch)
     
     def test_loss(self, loss, epoch):
-        self.writer.add_scalar('loss/test')
+        self.writer.add_scalar('loss/test', loss, epoch)
     
     def images(self, batch_images, epoch, name='my_image_batch'):
-        self.writer.add_images(name, batch_images.numpy(), epoch)
+        self.writer.add_images(name, batch_images.cpu().numpy(), epoch)
         
     def close(self):
         self.writer.close()
@@ -51,7 +53,7 @@ class timer(object):
         return time.strftime('%a %b %d %H:%M:%S %Y', time.localtime())
     
     def filetime(self):
-        return time.strftime("%y%m%d-%H:%M:%S", time.localtime())
+        return time.strftime("%y-%m-%d-%H:%M:%S", time.localtime())
 
     def get_hms(self, seconds):
         m, s = divmod(seconds, 60)

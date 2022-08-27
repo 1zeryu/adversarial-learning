@@ -8,7 +8,7 @@ import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
 import config as cf
 from tools import *
-from Dataset.dataset import CIFAR
+from Dataset.dataset import CIFAR, Mnist
 import os
 import sys
 from networks.ResNet import *
@@ -17,17 +17,18 @@ from networks import *
 from torch.autograd import Variable
 from torch.optim import lr_scheduler
 use_cuda = torch.cuda.is_available()
-from adversarial.attack import Attacks 
+from torchattacks import PGD, FGSM, CW
 
 import os
-os.environ["MKL_NUM_THREADS"] = '4'
-os.environ["NUMEXPR_NUM_THREADS"] = '4'
-os.environ["OMP_NUM_THREADS"] = '4'
+# os.environ["CUDA_VISIBLE_DEVICES"] = '1'
+# os.environ["MKL_NUM_THREADS"] = '4'
+# os.environ["NUMEXPR_NUM_THREADS"] = '4'
+# os.environ["OMP_NUM_THREADS"] = '4'
 
 # initlize the code
 parser = argparse.ArgumentParser(description='PyTorch CIFAR-10 Training')
 parser.add_argument('--lr', default=0.1, type=float)
-parser.add_argument('--model', default='wide-resnet', type=str)
+parser.add_argument('--model', default='resnet18', type=str)
 parser.add_argument('--depth', default=28, type=int)
 parser.add_argument('--widen_factor', default=10, type=int)
 parser.add_argument('--dropout', default=0.3, type=float)
@@ -37,12 +38,14 @@ parser.add_argument('--num_epochs', default=100, type=int)
 parser.add_argument('--batch_size',type=int,default=64)
 parser.add_argument('--debug','-d',action='store_true',default=False)
 parser.add_argument('--criterion', default='sgd', type=str)
-parser.add_argument('--lr_scheduler',default=None,type=str)
+parser.add_argument('--lr_scheduler',default='exponential',type=str)
 parser.add_argument('--weight_decay',default=5e-4,type=float)
 parser.add_argument('--attack', default=None, type=str)
 parser.add_argument('--eps', default=2/255, type=float)
 parser.add_argument('--mode',default=0, type=int) # mode: if is 0, then trian_epoch, if 1, then attack_train, if 2, then attack_test
 parser.add_argument('--save', '-s', action='store_true', default=False)
+parser.add_argument('--num_workers', default=0, type=int)
+# parser.add_argument('--augumentation')
 args = parser.parse_args()
 
 # parsering
@@ -57,12 +60,17 @@ def dataset(args):
     dataset = args.dataset
     if dataset == 'cifar10':
         data = CIFAR(dataset)
-        train_dataloader, test_dataloader, num_classes = data.dataloader(args.batch_size)
+        train_dataloader, test_dataloader, num_classes = data.dataloader(args.batch_size, args.num_workers)
         
-    if dataset == 'cifar100':
+    elif dataset == 'cifar100':
         data = CIFAR(dataset)
-        train_dataloader, test_dataloader, num_classes = data.dataloader(args.batch_size)
+        train_dataloader, test_dataloader, num_classes = data.dataloader(args.batch_size, args.num_workers)
+
+    elif dataset == 'mnist':
+        data = Mnist()
+        train_dataloader, test_dataloader, num_classes = data.dataloader(args.batch_size, args.num_workers)
     print("loading data...")
+
     return train_dataloader, test_dataloader, num_classes
 
 trainloader,testloader,num_classes = dataset(args)
@@ -76,32 +84,42 @@ elif args.model == 'resnet34':
     model = ResNet34(num_classes)
 print("building model...")
 
-filename = "model" + args.model + "_mode" + args.mode
+filename = "model" + args.model + "_mode" + str(args.mode)
 
+if use_cuda:
+    model = model.cuda()
+    model = torch.nn.DataParallel(model, device_ids=range(torch.cuda.device_count()))
+    cudnn.benchmark = True
+    torch.backends.cudnn.deterministic = True
 
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 if args.attack is None:
     pass
-else:
-    atk = Attacks(model, args.attack, eps=args.eps)
+elif args.attack == 'pgd':
+    atk = PGD(model, eps=args.eps)
+elif args.attack == 'fgsm':
+    atk = FGSM(model, eps=args.eps)
+elif args.attack == 'cw':
+    atk = CW(model, eps=args.eps)
 
 print("loading tools...")
 timer = timer()
-logger = log(timer.filetime() + filename)
-writer = writer(timer.filetime() + filename)
+logger = log(filename)
+writer = writer(filename)
     
 
-def info(self, args):
-    self.logger.info("| running the code...")
-    self.logger.info("running time: {}".format(timer.logtime()))
-    self.logger.info('''Hyperparamter:
-            model: {}, mode: {}
+def info(args):
+    logger.info("| running the code...")
+    logger.info("running time: {}".format(timer.logtime()))
+    logger.info('''Hyperparamter:
+            model: {}, mode: {}, eps: {}
             initilaze_learning_rate: {},  dataset: {}, lr_scheduler: {} \n
             parseval: {},  num_epochs: {},  wide_factor: {}, \n
             debug: {},  dropout: {},   criterion: {}, batch_size: {}
-    '''.format(args.model, args.mode,args.lr, args.dataset, args.lr_scheduler, args.parseval, args.num_epochs, args.widen_factor,
+    '''.format(args.model, args.mode, args.eps, args.lr, args.dataset, args.lr_scheduler, args.parseval, args.num_epochs, args.widen_factor,
     args.debug, args.dropout, args.criterion,args.batch_size))
 # information log in
-logger.info(args)
+info(args)
 
 
 
@@ -166,12 +184,15 @@ def attack_train(epoch):
     
     for batch_idx, (inputs, targets) in enumerate(trainloader):
         if use_cuda:
-            inputs, targets = inputs.cuda(), targets.cuda()
+            inputs = inputs.to(device)
+            targets = targets.to(device)
+            adv_imgs = atk(inputs, targets).cuda()
+        if batch_idx == 0:
+            writer.images(adv_imgs[:16], epoch, 'images/adversarial')
+            writer.images(inputs[:16], epoch, 'images/original')
         optimizer.zero_grad()
-        adv_imgs = atk(inputs, targets)
         outputs = model(adv_imgs)
-        writer.images(adv_imgs[:16], epoch, 'images/adversarial')
-        writer.images(inputs[:16], epoch, 'images/original')
+
         loss = criterion(outputs, targets)
         loss.backward()
         optimizer.step()
@@ -208,7 +229,6 @@ def test(epoch, best_acc):
         for batch_idx, (inputs, targets) in enumerate(testloader):
             if use_cuda:
                 inputs, targets = inputs.cuda(), targets.cuda()
-            inputs, targets = Variable(inputs), Variable(targets)
             outputs = model(inputs)
             loss = criterion(outputs, targets)
 
@@ -237,43 +257,40 @@ def attack_test(epoch, best_acc):
     test_loss = 0
     correct = 0
     total = 0
-    with torch.no_grad():
-        for batch_idx, (inputs, targets) in enumerate(testloader):
-            if use_cuda:
-                inputs, targets = inputs.cuda(), targets.cuda()
-            adv_imgs = atk(inputs, targets)
+    for batch_idx, (inputs, targets) in enumerate(testloader):
+        if use_cuda:
+            inputs = inputs.to(device)
+            targets =  targets.to(device)
+            adv_imgs = atk(inputs, targets).cuda()
+        if batch_idx == 0:
             writer.images(adv_imgs[:16], epoch, 'images/adversarial')
             writer.images(inputs[:16], epoch, 'images/original')
-            outputs = model(inputs)
-            loss = criterion(outputs, targets)
+        outputs = model(inputs)
+        loss = criterion(outputs, targets)
 
-            test_loss += loss.item()
-            _, predicted = torch.max(outputs.data, 1)
-            total += targets.size(0)
-            correct += predicted.eq(targets.data).cpu().sum()
+        test_loss += loss.item()
+        _, predicted = torch.max(outputs.data, 1)
+        total += targets.size(0)
+        correct += predicted.eq(targets.data).cpu().sum()
 
-        # Save checkpoint when best model
-        acc = 100.*correct/total
-        print("\n| Validation Epoch #%d\t\t\tLoss: %.4f test_Acc@1: %.2f%%" %(epoch, loss.item(), acc))
-        logger.info("\n| Validation Epoch #%d\t\t\tLoss: %.4f test_Acc@1: %.2f%%" %(epoch, loss.item(), acc))
-        if acc > best_acc and args.save:
-            logger.info('| Saving Best model...\t\t\tTop1 = %.2f%%' %(acc))
-            state = {
-                    'net':model.module if use_cuda else model,
-                    'acc':acc,
-                    'epoch':epoch,
-            }
-            save(state)
-            best_acc = acc
+    # Save checkpoint when best model
+    acc = 100.*correct/total
+    print("\n| Validation Epoch #%d\t\t\tLoss: %.4f test_Acc@1: %.2f%%" %(epoch, loss.item(), acc))
+    logger.info("\n| Validation Epoch #%d\t\t\tLoss: %.4f test_Acc@1: %.2f%%" %(epoch, loss.item(), acc))
+    if acc > best_acc and args.save:
+        logger.info('| Saving Best model...\t\t\tTop1 = %.2f%%' %(acc))
+        state = {
+                'net':model.module if use_cuda else model,
+                'acc':acc,
+                'epoch':epoch,
+        }
+        save(state)
+        best_acc = acc
     return acc, test_loss
 
 
 
 if __name__ == "__main__":
-    if use_cuda:
-        model.cuda()
-        model = torch.nn.DataParallel(model, device_ids=range(torch.cuda.device_count()))
-        cudnn.benchmark = True
     elapsed_time = 0
     for epoch in range(1, args.num_epochs+1):
         start_time = time.time()
@@ -282,11 +299,13 @@ if __name__ == "__main__":
             train_acc, train_loss = train_epoch(epoch)
             test_acc, test_loss = test(epoch, best_acc)
         elif args.mode == 1:
+            best_acc = 0
             train_acc, train_loss = attack_train(epoch)
             test_acc, test_loss = test(epoch, best_acc)
         elif args.mode == 2:
+            best_acc = 0
             train_acc, train_loss = train_epoch(epoch)
-            test_acc, test_loss = attack_test(test)
+            test_acc, test_loss = attack_test(epoch, best_acc=best_acc)
 
         if args.lr_scheduler:
             scheduler.step()
@@ -298,3 +317,5 @@ if __name__ == "__main__":
         elapsed_time += epoch_time
         logger.info('| Elapsed time : %d:%02d:%02d'  %(cf.get_hms(elapsed_time)))
         writer.close()
+    logger.info("endding time: {}, successfully running".format(timer.filetime()))
+    logger.close()
