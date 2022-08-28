@@ -7,6 +7,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
 import config as cf
+from networks.models import get_model
 from tools import *
 from Dataset.dataset import CIFAR, Mnist
 import os
@@ -16,8 +17,9 @@ import argparse
 from networks import *
 from torch.autograd import Variable
 from torch.optim import lr_scheduler
+import torchvision
 use_cuda = torch.cuda.is_available()
-from torchattacks import PGD, FGSM, CW
+from adversarial.attack import get_attack
 
 import os
 # os.environ["CUDA_VISIBLE_DEVICES"] = '1'
@@ -29,7 +31,7 @@ import os
 parser = argparse.ArgumentParser(description='PyTorch CIFAR-10 Training')
 parser.add_argument('--lr', default=0.1, type=float)
 parser.add_argument('--model', default='resnet18', type=str)
-parser.add_argument('--depth', default=28, type=int)
+parser.add_argument('--depth', default=34, type=int)
 parser.add_argument('--widen_factor', default=10, type=int)
 parser.add_argument('--dropout', default=0.3, type=float)
 parser.add_argument('--dataset', default='cifar10', type=str)
@@ -74,14 +76,10 @@ def dataset(args):
     return train_dataloader, test_dataloader, num_classes
 
 trainloader,testloader,num_classes = dataset(args)
-if args.model == 'wide-resnet':
-    model = Wide_ResNet(args.depth, args.widen_factor, args.dropout, num_classes, convex_combination=args.parseval)
-elif args.model == 'resnet18':
-    model = ResNet18(num_classes)
-elif args.model == 'resnet50':
-    model = ResNet50(num_classes)
-elif args.model == 'resnet34':
-    model = ResNet34(num_classes)
+
+model = get_model(args, num_classes=num_classes)
+print(model)
+exit(0)
 print("building model...")
 
 filename = "model" + args.model + "_mode" + str(args.mode)
@@ -93,15 +91,12 @@ if use_cuda:
     torch.backends.cudnn.deterministic = True
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
 if args.attack is None:
     pass
-elif args.attack == 'pgd':
-    atk = PGD(model, eps=args.eps)
-elif args.attack == 'fgsm':
-    atk = FGSM(model, eps=args.eps)
-elif args.attack == 'cw':
-    atk = CW(model, eps=args.eps)
-
+else: 
+    atk = get_attack(model, args.attack, args.eps)
+    
 print("loading tools...")
 timer = timer()
 logger = log(filename)
@@ -174,7 +169,7 @@ def train_epoch(epoch):
                 %(epoch, batch_idx,loss.item(), 100.*correct/total))
     return acc, train_loss
 
-    # Training
+# Training
 def attack_train(epoch):
     model.train()
     model.training = True
@@ -287,8 +282,6 @@ def attack_test(epoch, best_acc):
         save(state)
         best_acc = acc
     return acc, test_loss
-
-
 
 if __name__ == "__main__":
     elapsed_time = 0
