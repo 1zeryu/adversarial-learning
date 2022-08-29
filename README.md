@@ -1,36 +1,75 @@
-# parseval-network-pytorch:
-# Implementation of "Parseval networks: improving robustenss to adversarial examples"
+# adversarial-learning
 
-This is an implementation of ["Parseval networks: improving robustenss to adversarial examples"](https://arxiv.org/abs/1704.08847).
+*Deep neural network(DNNs) are vulnerable to perturbations on images. Despite the high performance on clean datasets, we need to consider this shortcoming when deploying to real applications. This is the code I experimented with in adversarial learning.*
 
-## Requirements
-- Install pytorch (mine is v1.7.1)
+## Project Structure
 
-See [Pytorch.org](https://pytorch.org/) for more installation information.
+Here is the structure of my project. Adversarial directory is my code of adversarial method. "networks" directory is my code of DNNs model. 
+<details>
+<summary>Expand to view</summary>
+<pre><code>
+adversarial-learning:.
+│  .gitignore
+│  examize.py
+│  LICENSE
+│  main.py
+│  README.md
+│  requirements.txt
+│  tools.py
+│
+├─adversarial
+│  │  attack.py
+│  │  BlackPepper.py
+│  │  Gaussian.py
+│  │  PGD.py
+│  │
+│  └─__pycache__
+├─Dataset
+│  │  dataset.py
+│  ├─cifar10
+│  ├─MNIST
+│  └─__pycache__
+│          dataset.cpython-38.pyc
+├─logs
+├─networks
+│  │  CNN.py
+│  │  models.py
+│  │  ResNet.py
+│  │  wide_resnet.py
+│  │  __init__.py
+│  │
+│  └─__pycache__
+│          models.cpython-38.pyc
+│          ResNet.cpython-38.pyc
+│          wide_resnet.cpython-38.pyc
+│          __init__.cpython-38.pyc
+│
+├─runs
+└─__pycache__
+</code></pre>
+</details>
 
-## Run
+## Usage
 
-To run training of wrn-28-10 with parseval net
+### clone
+
+```bash
+git clone https://github.com/1zeryu/adversarial-learning.git
 ```
-python main.py --lr 0.1 --net-type wide_resnet --depth 28 --widen_factor 10 --dropout 0.3 --dataset cifar10 --parseval
+
+### Requirements
+
+```bash
+pip install requirements.txt
 ```
 
-If you want to run vanilla net work, please ignore --parseval
+### Run
 
-```
-python main.py --lr 0.1 --net-type wide_resnet --depth 28 --widen_factor 10 --dropout 0.3 --dataset cifar10
+You can understand some arguments in advance:
+
+```bash
+python main.py -h
 ```
 
 ## Details
-
-The network used in the code is wideresnet-28-10. Model used here refers one network implementation from [this link](https://github.com/meliketoy/wide-resnet.pytorch).
-If "--parseval", the training will actavate the use of orthogonal_retraction and convex_constraint in parseval_net, and the weight decay is set to zero (default 5e-4).
-
-## Results
-
-Test accuracy:
-
-<p align="center"><img width="90%" src="./test_acc.svg"></p>
-
-The orange line is the result of the above first script, while the blue line is the result of the above first script.
 

@@ -1,4 +1,3 @@
-
 from fileinput import filename
 from sched import scheduler
 import torch
@@ -6,10 +5,9 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
-import config as cf
 from networks.models import get_model
 from tools import *
-from Dataset.dataset import CIFAR, Mnist
+from Dataset.dataset import data
 import os
 import sys
 from networks.ResNet import *
@@ -28,25 +26,25 @@ import os
 # os.environ["OMP_NUM_THREADS"] = '4'
 
 # initlize the code
-parser = argparse.ArgumentParser(description='PyTorch CIFAR-10 Training')
-parser.add_argument('--lr', default=0.1, type=float)
-parser.add_argument('--model', default='resnet18', type=str)
-parser.add_argument('--depth', default=34, type=int)
-parser.add_argument('--widen_factor', default=10, type=int)
-parser.add_argument('--dropout', default=0.3, type=float)
-parser.add_argument('--dataset', default='cifar10', type=str)
-parser.add_argument('--parseval', '-p', default=False , action='store_true')
-parser.add_argument('--num_epochs', default=100, type=int)
-parser.add_argument('--batch_size',type=int,default=64)
-parser.add_argument('--debug','-d',action='store_true',default=False)
-parser.add_argument('--criterion', default='sgd', type=str)
-parser.add_argument('--lr_scheduler',default='exponential',type=str)
-parser.add_argument('--weight_decay',default=5e-4,type=float)
-parser.add_argument('--attack', default=None, type=str)
-parser.add_argument('--eps', default=2/255, type=float)
-parser.add_argument('--mode',default=0, type=int) # mode: if is 0, then trian_epoch, if 1, then attack_train, if 2, then attack_test
-parser.add_argument('--save', '-s', action='store_true', default=False)
-parser.add_argument('--num_workers', default=0, type=int)
+parser = argparse.ArgumentParser(description='adversarial learning')
+parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
+parser.add_argument('--model', default='resnet18', type=str, help='select the model to use')
+parser.add_argument('--depth', default=34, type=int, help='depth of the wide-resnet')
+parser.add_argument('--widen_factor', default=10, type=int, help='widen factor for wide-resnet')
+parser.add_argument('--dropout', default=0.3, type=float, help='dropout for wide-resnet')
+parser.add_argument('--dataset', default='cifar10', type=str, help='name of the dataset')
+parser.add_argument('--parseval', '-p', default=False , action='store_true', help='whether to use parseval networks')
+parser.add_argument('--num_epochs', default=100, type=int, help='number of training epochs')
+parser.add_argument('--batch_size',type=int,default=64, help='batch_size of the network')
+parser.add_argument('--debug','-d',action='store_true',default=False, help='enable debugging')
+parser.add_argument('--criterion', default='sgd', type=str, help='name of the criterion')
+parser.add_argument('--lr_scheduler',default='exponential',type=str, help='name of the learning rate scheduler')
+parser.add_argument('--weight_decay',default=5e-4,type=float, help='weight decay for regularization')
+parser.add_argument('--attack', default=None, type=str, help='name of the attack function')
+parser.add_argument('--eps', default=2/255, type=float, help='number of attack arguments')
+parser.add_argument('--mode',default=0, type=int, help='mode: if is 0, then trian_epoch, if 1, then attack_train, if 2, then attack_test') # mode: if is 0, then trian_epoch, if 1, then attack_train, if 2, then attack_test
+parser.add_argument('--save', '-s', action='store_true', default=False, help='save the model to disk')
+parser.add_argument('--num_workers', default=0, type=int, help='number of workers for training')
 # parser.add_argument('--augumentation')
 args = parser.parse_args()
 
@@ -58,28 +56,11 @@ args = parser.parse_args()
 # self.dataset = args.dataset
 # self.lr = args.lr
 # self.dropout = args.dropout 
-def dataset(args):
-    dataset = args.dataset
-    if dataset == 'cifar10':
-        data = CIFAR(dataset)
-        train_dataloader, test_dataloader, num_classes = data.dataloader(args.batch_size, args.num_workers)
-        
-    elif dataset == 'cifar100':
-        data = CIFAR(dataset)
-        train_dataloader, test_dataloader, num_classes = data.dataloader(args.batch_size, args.num_workers)
 
-    elif dataset == 'mnist':
-        data = Mnist()
-        train_dataloader, test_dataloader, num_classes = data.dataloader(args.batch_size, args.num_workers)
-    print("loading data...")
-
-    return train_dataloader, test_dataloader, num_classes
-
-trainloader,testloader,num_classes = dataset(args)
+trainloader,testloader,num_classes, trainset, testset = data(args.model, args.dataset, args.batch_size, args.num_workers)
 
 model = get_model(args, num_classes=num_classes)
 print(model)
-exit(0)
 print("building model...")
 
 filename = "model" + args.model + "_mode" + str(args.mode)
@@ -115,7 +96,6 @@ def info(args):
     args.debug, args.dropout, args.criterion,args.batch_size))
 # information log in
 info(args)
-
 
 
 if args.parseval:
@@ -308,7 +288,7 @@ if __name__ == "__main__":
         writer.test_loss(test_loss, epoch)       
         epoch_time = time.time() - start_time
         elapsed_time += epoch_time
-        logger.info('| Elapsed time : %d:%02d:%02d'  %(cf.get_hms(elapsed_time)))
+        logger.info(timer.runtime())
         writer.close()
     logger.info("endding time: {}, successfully running".format(timer.filetime()))
     logger.close()
