@@ -2,7 +2,7 @@ from networks.ResNet import ResNet18, ResNet34, ResNet50
 from networks.wide_resnet import Wide_ResNet
 import torch.nn as nn
 import torchvision
-
+from networks.ViT import vit
 
 def get_model(args, num_classes):
     if args.model == 'wide-resnet':
@@ -18,6 +18,9 @@ def get_model(args, num_classes):
         model = ResNet34(num_classes)
         
     elif args.model == 'vit':
+        model = vit(32, 4, num_classes=num_classes, dropout=args.dropout)
+    
+    elif args.model == 'pretrainedvit':
         model = torchvision.models.vit_b_16(weights='IMAGENET1K_V1')
         for p in model.parameters():
             p.requires_grad = False
@@ -29,7 +32,6 @@ def get_model(args, num_classes):
             nn.ReLU(inplace=True),
             nn.Dropout(0.5),
             nn.Linear(4096, num_classes))
-        
     elif args.model == 'swint':
         model = torchvision.models.swin_t(weights='IMAGENET1K_V1')
         for p in model.parameters():

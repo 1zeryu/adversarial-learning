@@ -12,4 +12,6 @@ def get_attack(model, attack, eps):
         atk = tk.CW(model)
     elif attack == 'gaussian':
         atk = GaussianNoise(eps)
+    # elif attack == 'l-bfgs':
+    #     atk = tk.LBFGS(model, eps=eps)
     return atk

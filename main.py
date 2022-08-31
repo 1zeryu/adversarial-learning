@@ -5,8 +5,9 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
+from myutils.optimizer import get_scheduler
 from networks.models import get_model
-from tools import *
+from myutils.tools import *
 from Dataset.dataset import data
 import os
 import sys
@@ -37,7 +38,7 @@ parser.add_argument('--parseval', '-p', default=False , action='store_true', hel
 parser.add_argument('--num_epochs', default=100, type=int, help='number of training epochs')
 parser.add_argument('--batch_size',type=int,default=64, help='batch_size of the network')
 parser.add_argument('--debug','-d',action='store_true',default=False, help='enable debugging')
-parser.add_argument('--criterion', default='sgd', type=str, help='name of the criterion')
+parser.add_argument('--criterion', default='cross_entropy', type=str, help='name of the criterion')
 parser.add_argument('--lr_scheduler',default='exponential',type=str, help='name of the learning rate scheduler')
 parser.add_argument('--weight_decay',default=5e-4,type=float, help='weight decay for regularization')
 parser.add_argument('--attack', default=None, type=str, help='name of the attack function')
@@ -45,6 +46,7 @@ parser.add_argument('--eps', default=2/255, type=float, help='number of attack a
 parser.add_argument('--mode',default=0, type=int, help='mode: if is 0, then trian_epoch, if 1, then attack_train, if 2, then attack_test') # mode: if is 0, then trian_epoch, if 1, then attack_train, if 2, then attack_test
 parser.add_argument('--save', '-s', action='store_true', default=False, help='save the model to disk')
 parser.add_argument('--num_workers', default=0, type=int, help='number of workers for training')
+parser.add_argument('--optimizer',default='sgd',type=str, help='name of the optimizer')
 # parser.add_argument('--augumentation')
 args = parser.parse_args()
 
@@ -98,19 +100,18 @@ def info(args):
 info(args)
 
 
-if args.parseval:
-    optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=0)
-else:
-    optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=args.weight_decay)
 
-if args.lr_scheduler == 'lambda1':
-    lambda1 = lambda epoch:np.sin(epoch) / (epoch + 1e-4)
-    scheduler = lr_scheduler.LambdaLR(optimizer,lr_lambda = lambda1)
-elif args.lr_scheduler == 'step':
-    scheduler = lr_scheduler.StepLR(optimizer,step_size=10,gamma=0.8)
-elif args.lr_scheduler == 'exponential':
-    scheduler = lr_scheduler.ExponentialLR(optimizer, gamma=0.9)
+if args.optimizer == 'sgd':
+    if args.parseval == False:
+        optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=args.weight_decay)
+    else:
+        optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0, weight_decay=args.weight_decay)
+elif args.optimizer == 'l-bfgs':
+    optimizer = optim.LBFGS(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=args.weight_decay)
+elif args.optimizer == 'adam':
+    optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay, momentum=0.9,)
 
+scheduler = get_scheduler(args, optimizer)
 
 criterion = nn.CrossEntropyLoss()
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

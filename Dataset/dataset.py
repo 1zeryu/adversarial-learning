@@ -105,7 +105,7 @@ num_classes = {'cifar10': 10,
                'mnist': 10,}
 
 def data(model='resnet18', dataset='cifar10', batch_size=128, num_workers=0):
-    if model == 'vit':
+    if model == 'pretrainedvit':
         if dataset == 'cifar10':
             trainset = torchvision.datasets.CIFAR10(root=dataset_dir['cifar10'], train=True, download=True, transform=CIFAR10_transform_train1)
             testset = torchvision.datasets.CIFAR10(root=dataset_dir['cifar10'], train=False, download=False, transform=CIFAR10_transform_test1)
