@@ -19,6 +19,7 @@ from torch.optim import lr_scheduler
 import torchvision
 use_cuda = torch.cuda.is_available()
 from adversarial.attack import get_attack
+from myutils.augmentation import mixup_criterion,mixup_data
 
 import os
 # os.environ["CUDA_VISIBLE_DEVICES"] = '1'
@@ -47,6 +48,8 @@ parser.add_argument('--mode',default=0, type=int, help='mode: if is 0, then tria
 parser.add_argument('--save', '-s', action='store_true', default=False, help='save the model to disk')
 parser.add_argument('--num_workers', default=0, type=int, help='number of workers for training')
 parser.add_argument('--optimizer',default='sgd',type=str, help='name of the optimizer')
+parser.add_argument('--mixup','-m', action='store_true', default=True, help='mixup augmentation')    
+parser.add_argument('--alpha', default=1, type=float, help='mixup interpolation coefficient (default: 1)')
 # parser.add_argument('--augumentation')
 args = parser.parse_args()
 
@@ -126,9 +129,33 @@ def train_epoch(epoch):
     for batch_idx, (inputs, targets) in enumerate(trainloader):
         if use_cuda:
             inputs, targets = inputs.cuda(), targets.cuda() # GPU settings
-        optimizer.zero_grad()
-        outputs = model(inputs)               # Forward Propagation
-        loss = criterion(outputs, targets)  # Loss
+            if args.mode == 1:
+                adv_imgs = atk(inputs, targets).cuda()
+        elif args.mode == 1: 
+            adv_imgs = atk(inputs, targets)
+        
+        if batch_idx == 0 and args.mode in [1,2]:
+            writer.images(adv_imgs[:4], epoch, 'images/adversarial')
+            writer.images(inputs[:4], epoch, 'images/original')
+        
+        if args.mixup == True:
+            inputs, targets_a, targets_b, lam = mixup_data(inputs, targets, args.alpha, use_cuda)
+            
+            inputs, targets_a, targets_b = map(Variable, (inputs, targets_a, targets_b))
+            if args.mode == 1:
+                outputs = model(adv_imgs)
+            else:
+                outputs = model(inputs)               # Forward Propagation
+            loss = mixup_criterion(outputs, targets_a, targets_b, lam)
+        
+        else: 
+            optimizer.zero_grad()
+            if args.mode == 1:
+                outputs = model(adv_imgs)
+            else:
+                outputs = model(inputs)               # Forward Propagation
+            loss = criterion(outputs, targets)  # Loss
+            
         loss.backward()  # Backward Propagation
         optimizer.step() # Optimizer update
 
@@ -137,46 +164,6 @@ def train_epoch(epoch):
                 orthogonal_retraction(m)
                 convex_constraint(m)
 
-        train_loss += loss.item()
-        _, predicted = torch.max(outputs.data, 1)
-        total += targets.size(0)
-        correct += predicted.eq(targets.data).cpu().sum()
-        acc = 100.*correct/total
-        sys.stdout.write('\r')
-        sys.stdout.write('| Epoch %3d, Data: %3d \t\tLoss: %.4f Acc@1: %.3f%%'
-                %(epoch, batch_idx,loss.item(), 100.*correct/total))
-        sys.stdout.flush()
-    logger.info('| Epoch %3d, Data: %3d \t\tLoss: %.4f Acc@1: %.3f%%'
-                %(epoch, batch_idx,loss.item(), 100.*correct/total))
-    return acc, train_loss
-
-# Training
-def attack_train(epoch):
-    model.train()
-    model.training = True
-    train_loss = 0
-    correct = 0
-    total = 0
-    
-    for batch_idx, (inputs, targets) in enumerate(trainloader):
-        if use_cuda:
-            inputs = inputs.to(device)
-            targets = targets.to(device)
-            adv_imgs = atk(inputs, targets).cuda()
-        if batch_idx == 0:
-            writer.images(adv_imgs[:16], epoch, 'images/adversarial')
-            writer.images(inputs[:16], epoch, 'images/original')
-        optimizer.zero_grad()
-        outputs = model(adv_imgs)
-
-        loss = criterion(outputs, targets)
-        loss.backward()
-        optimizer.step()
-        
-        if args.parseval:
-            for m in model.modules():
-                orthogonal_retraction(m)
-                convex_constraint(m)
         train_loss += loss.item()
         _, predicted = torch.max(outputs.data, 1)
         total += targets.size(0)
@@ -204,9 +191,22 @@ def test(epoch, best_acc):
     with torch.no_grad():
         for batch_idx, (inputs, targets) in enumerate(testloader):
             if use_cuda:
-                inputs, targets = inputs.cuda(), targets.cuda()
-            outputs = model(inputs)
+                inputs = inputs.to(device)
+                targets =  targets.to(device)
+                if args.mode == 2:
+                    adv_imgs = atk(inputs, targets).cuda()
+            elif args.mode == 2:
+                adv_imgs = atk(inputs, targets)
+            
+            if args.mode == 2:
+                outputs = model(adv_imgs)
+            else:
+                outputs = model(inputs)
+                
             loss = criterion(outputs, targets)
+            if batch_idx == 0 and args.mode in [1, 2]:
+                writer.images(adv_imgs[:4], epoch, 'images/adversarial')
+                writer.images(inputs[:4], epoch, 'images/original')
 
             test_loss += loss.item()
             _, predicted = torch.max(outputs.data, 1)
@@ -228,65 +228,23 @@ def test(epoch, best_acc):
             best_acc = acc
     return acc, test_loss
 
-def attack_test(epoch, best_acc):
-    model.eval()
-    test_loss = 0
-    correct = 0
-    total = 0
-    for batch_idx, (inputs, targets) in enumerate(testloader):
-        if use_cuda:
-            inputs = inputs.to(device)
-            targets =  targets.to(device)
-            adv_imgs = atk(inputs, targets).cuda()
-        if batch_idx == 0:
-            writer.images(adv_imgs[:16], epoch, 'images/adversarial')
-            writer.images(inputs[:16], epoch, 'images/original')
-        outputs = model(inputs)
-        loss = criterion(outputs, targets)
-
-        test_loss += loss.item()
-        _, predicted = torch.max(outputs.data, 1)
-        total += targets.size(0)
-        correct += predicted.eq(targets.data).cpu().sum()
-
-    # Save checkpoint when best model
-    acc = 100.*correct/total
-    print("\n| Validation Epoch #%d\t\t\tLoss: %.4f test_Acc@1: %.2f%%" %(epoch, loss.item(), acc))
-    logger.info("\n| Validation Epoch #%d\t\t\tLoss: %.4f test_Acc@1: %.2f%%" %(epoch, loss.item(), acc))
-    if acc > best_acc and args.save:
-        logger.info('| Saving Best model...\t\t\tTop1 = %.2f%%' %(acc))
-        state = {
-                'net':model.module if use_cuda else model,
-                'acc':acc,
-                'epoch':epoch,
-        }
-        save(state)
-        best_acc = acc
-    return acc, test_loss
-
 if __name__ == "__main__":
     elapsed_time = 0
     for epoch in range(1, args.num_epochs+1):
         start_time = time.time()
-        if args.mode == 0:
-            best_acc = 0
-            train_acc, train_loss = train_epoch(epoch)
-            test_acc, test_loss = test(epoch, best_acc)
-        elif args.mode == 1:
-            best_acc = 0
-            train_acc, train_loss = attack_train(epoch)
-            test_acc, test_loss = test(epoch, best_acc)
-        elif args.mode == 2:
-            best_acc = 0
-            train_acc, train_loss = train_epoch(epoch)
-            test_acc, test_loss = attack_test(epoch, best_acc=best_acc)
+        
+        best_acc = 0
+        train_acc, train_loss = train_epoch(epoch)
+        test_acc, test_loss = test(epoch, best_acc)
 
         if args.lr_scheduler:
             scheduler.step()
-        writer.test_acc(test_acc, epoch)
-        writer.train_acc(train_acc, epoch)
-        writer.train_loss(train_loss, epoch)
-        writer.test_loss(test_loss, epoch)       
+            
+        if args.mode == 1 or args.mode == 2:
+            writer.test_acc(test_acc, epoch)
+            writer.train_acc(train_acc, epoch)
+            writer.train_loss(train_loss, epoch)
+            writer.test_loss(test_loss, epoch)       
         epoch_time = time.time() - start_time
         elapsed_time += epoch_time
         logger.info(timer.runtime())

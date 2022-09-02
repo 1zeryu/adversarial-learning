@@ -2,7 +2,7 @@ from networks.ResNet import ResNet18, ResNet34, ResNet50
 from networks.wide_resnet import Wide_ResNet
 import torch.nn as nn
 import torchvision
-from networks.ViT import vit
+from networks.ViT import Lip_ViT, lip_vit, vit
 
 def get_model(args, num_classes):
     if args.model == 'wide-resnet':
@@ -19,6 +19,9 @@ def get_model(args, num_classes):
         
     elif args.model == 'vit':
         model = vit(32, 4, num_classes=num_classes, dropout=args.dropout)
+    
+    elif args.model == 'lip_vit':
+        model = lip_vit(32, 4, num_classes=num_classes, dropout=args.dropout)
     
     elif args.model == 'pretrainedvit':
         model = torchvision.models.vit_b_16(weights='IMAGENET1K_V1')
