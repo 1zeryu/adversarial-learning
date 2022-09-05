@@ -39,14 +39,6 @@ def get_exponential_schedule_with_warmup(optimizer, num_warmup_steps, num_traini
         return max(0,0, math.exp((float(num_training_steps) - float(current_step)) / (float(num_training_steps) - float(num_warmup_steps)))/ math.e) 
     return LambdaLR(optimizer, lr_lambda, last_epoch)
 
-def get_exp_schedule_with_warmup(optimizer, num_warmup_steps, num_training_steps, last_epoch=-1):
-
-    def lr_lambda(current_step: int):
-         # 自定义函数
-        if current_step < num_warmup_steps:
-            return math.exp(float(current_step)/float(max(1, num_warmup_steps) - 1)) 
-        return max(0,0, 1.0001) 
-    return LambdaLR(optimizer, lr_lambda, last_epoch)
 
 def get_scheduler(args, optimizer):
     if args.lr_scheduler == 'lambda1':
@@ -58,7 +50,5 @@ def get_scheduler(args, optimizer):
         scheduler = lr_scheduler.ExponentialLR(optimizer, gamma=0.9)
     elif args.lr_scheduler == 'warmup':
         scheduler = get_linear_schedule_with_warmup(optimizer, 20, num_training_steps=args.num_epochs)
-    elif args.lr_scheduler == 'expwarmup':
-        scheduler = get_exp_schedule_with_warmup(optimizer, 20, num_training_steps=args.num_epochs)
     return scheduler
     

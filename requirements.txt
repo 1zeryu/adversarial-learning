@@ -1,0 +1,8 @@
+einops==0.4.1
+numpy==1.22.3
+torch==1.12.1
+torchattacks==3.2.7
+torchvision==0.13.1+cu116
+visdom==0.1.8.9
+vit_pytorch==0.35.8
+~orch==1.12.1+cu116
