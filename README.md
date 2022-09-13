@@ -8,43 +8,29 @@ Here is the structure of my project. Adversarial directory is my code of adversa
 <details>
 <summary>Expand to view</summary>
 <pre><code>
-adversarial-learning:.
-│  .gitignore
-│  examize.py
-│  LICENSE
-│  main.py
-│  README.md
-│  requirements.txt
-│  tools.py
-│
-├─adversarial
-│  │  attack.py
-│  │  BlackPepper.py
-│  │  Gaussian.py
-│  │  PGD.py
-│  │
+adversarial-learning
+├─adversarial 
 │  └─__pycache__
+├─checkpoints
+├─csv
 ├─Dataset
-│  │  dataset.py
 │  ├─cifar10
+│  │  └─cifar-10-batches-py
 │  ├─MNIST
+│  │  └─raw
 │  └─__pycache__
-│          dataset.cpython-38.pyc
+├─demo
+├─example
 ├─logs
-├─networks
-│  │  CNN.py
-│  │  models.py
-│  │  ResNet.py
-│  │  wide_resnet.py
-│  │  __init__.py
-│  │
+├─myutils
 │  └─__pycache__
-│          models.cpython-38.pyc
-│          ResNet.cpython-38.pyc
-│          wide_resnet.cpython-38.pyc
-│          __init__.cpython-38.pyc
-│
+├─networks
+│  └─__pycache__
 ├─runs
+│  ├─220901190206modelpretrainedvit_mode0
+│  ├─220911143121modellip_vit_mode0
+│  └─220911143201modelvit_mode0
+├─save
 └─__pycache__
 </code></pre>
 </details>
@@ -71,5 +57,29 @@ You can understand some arguments in advance:
 python main.py -h
 ```
 
-## Details
+## Attacks
+
+* **Gaussian** 
+
+* **FGSM**
+
+Fast Gradient Sign Method(FGSM), based on the rational hypothesis that DNNs is sufficiently linear in nature, add one-order noise at a time to increase the loss. 
+$$
+x^{\prime}=x+\varepsilon \cdot \operatorname{sign}\left(\nabla_x J(x, y)\right)
+$$
+
+
+* **PGD**
+
+ PGD, Project Gradient Descent, which can be seen as a replica of FSGM, is the iterative gradient attack method. PGD seek superb direction of attack by iterative without the linear hypothesis of FGSM.
+$$
+x_{t + 1}=\prod_{x + S}\left(x_t+\alpha \cdot \operatorname{sign}\left(\nabla_x J\left(x_t, y\right)\right)\right)
+$$
+
+
+## ![adversarial example](img/insert.svg)
+
+## Lipschitz Defense
+
+We use Lipschitz constraint in our model. 
 
