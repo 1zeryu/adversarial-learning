@@ -70,6 +70,7 @@ Other directories and files are some assist code for our experiments.
 * **FGSM**
 
 Fast Gradient Sign Method(FGSM), based on the rational hypothesis that DNNs is sufficiently linear in nature, add one-order noise at a time to increase the loss. 
+
 $$
 x^{\prime}=x+\varepsilon \cdot \operatorname{sign}(\nabla_x J(x, y))
 $$
@@ -78,6 +79,7 @@ $$
 * **PGD**
 
  PGD, Project Gradient Descent, which can be seen as a replica of FSGM, is the iterative gradient attack method. PGD seek superb direction of attack by iterative without the linear hypothesis of FGSM.
+ 
 $$
 x_{t + 1}=\prod_{x + S}\left(x_t+\alpha \cdot \operatorname{sign}(\nabla_x J\left(x_t, y\right)\right))
 $$
